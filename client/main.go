@@ -10,9 +10,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	fmt.Println("starting server")
 	remoteAddress := os.Args[1]
-	go func() { server(ctx, remoteAddress) }()
 	fmt.Println("starting client")
 	client(ctx, remoteAddress)
 }
@@ -75,44 +73,6 @@ func client(ctx context.Context, address string) (err error) {
 	select {
 	case <-ctx.Done():
 		fmt.Println("Client cancelled")
-		err = ctx.Err()
-	case err = <-doneChan:
-	}
-
-	return
-}
-
-func server(ctx context.Context, address string) (err error) {
-	conn, err := net.ListenPacket("udp", address)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	doneChan := make(chan error, 1)
-	buffer := make([]byte, maxBufferSize)
-
-	go func() {
-		for {
-			n, addr, err := conn.ReadFrom(buffer)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-			request := string(buffer[:n])
-			response := responsePrefix + request
-			n = copy(buffer, response)
-			n, err = conn.WriteTo(buffer[:n], addr)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		fmt.Println("Server cancelled")
 		err = ctx.Err()
 	case err = <-doneChan:
 	}
