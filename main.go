@@ -35,35 +35,37 @@ func client(ctx context.Context, address string, message string) (err error) {
 	doneChan := make(chan error, 1)
 
 	go func() {
-		endOfRound := time.Now().Add(time.Second)
-		completedRoundtrips := 0
 		buffer := make([]byte, maxBufferSize)
 		expectedResponse := responsePrefix + message
-		for time.Now().Before(endOfRound) {
-			_, err := fmt.Fprint(conn, message)
-			if err != nil {
-				doneChan <- err
-				return
+		for i := 0; i < 10; i++ {
+			endOfRound := time.Now().Add(time.Second)
+			completedRoundtrips := 0
+			for time.Now().Before(endOfRound) {
+				_, err := fmt.Fprint(conn, message)
+				if err != nil {
+					doneChan <- err
+					return
+				}
+				deadline := time.Now().Add(timeout)
+				err = conn.SetReadDeadline(deadline)
+				if err != nil {
+					doneChan <- err
+					return
+				}
+				n, _, err := conn.ReadFrom(buffer)
+				if err != nil {
+					doneChan <- err
+					return
+				}
+				response := string(buffer[:n])
+				if response != expectedResponse {
+					fmt.Printf("Wrong response, got '%s' instead of '%s'\n", response, expectedResponse)
+				}
+				completedRoundtrips++
 			}
-			deadline := time.Now().Add(timeout)
-			err = conn.SetReadDeadline(deadline)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-			n, _, err := conn.ReadFrom(buffer)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-			response := string(buffer[:n])
-			if response != expectedResponse {
-				fmt.Printf("Wrong response, got '%s' instead of '%s'\n", response, expectedResponse)
-			}
-			completedRoundtrips++
+			meanRtt := 1000000.0 / float64(completedRoundtrips)
+			fmt.Printf("Mean RTT was %f µs\n", meanRtt)
 		}
-		meanRtt := 1000000.0 / float64(completedRoundtrips)
-		fmt.Printf("Mean RTT was %f µs\n", meanRtt)
 		doneChan <- nil
 	}()
 
