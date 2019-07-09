@@ -4,26 +4,29 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"time"
 )
 
 func main() {
 	ctx := context.Background()
 	fmt.Println("starting server")
-	go func() { server(ctx, "127.0.0.1:7777") }()
+	remoteAddress := os.Args[1]
+	go func() { server(ctx, remoteAddress) }()
 	fmt.Println("starting client")
-	client(ctx, "127.0.0.1:7777", "bla bla")
+	client(ctx, remoteAddress)
 }
 
 const maxBufferSize = 1024
-
 const timeout = 10 * time.Millisecond
-
+const message = "bla bla"
 const responsePrefix = "I got "
+const roundDuration = time.Second
 
-func client(ctx context.Context, address string, message string) (err error) {
+func client(ctx context.Context, address string) (err error) {
 	remoteAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
+		fmt.Printf("Couldn't resolve address %s\n", address)
 		return
 	}
 	conn, err := net.DialUDP("udp", nil, remoteAddr)
@@ -38,7 +41,7 @@ func client(ctx context.Context, address string, message string) (err error) {
 		buffer := make([]byte, maxBufferSize)
 		expectedResponse := responsePrefix + message
 		for i := 0; i < 10; i++ {
-			endOfRound := time.Now().Add(time.Second)
+			endOfRound := time.Now().Add(roundDuration)
 			completedRoundtrips := 0
 			for time.Now().Before(endOfRound) {
 				_, err := fmt.Fprint(conn, message)
@@ -63,7 +66,7 @@ func client(ctx context.Context, address string, message string) (err error) {
 				}
 				completedRoundtrips++
 			}
-			meanRtt := 1000000.0 / float64(completedRoundtrips)
+			meanRtt := float64(roundDuration) / float64(completedRoundtrips) / 1000
 			fmt.Printf("Mean RTT was %f µs\n", meanRtt)
 		}
 		doneChan <- nil
