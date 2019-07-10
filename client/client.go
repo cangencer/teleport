@@ -1,17 +1,15 @@
-package main
+package client
 
 import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"time"
 )
 
-func main() {
+func Run(remoteAddress *string) {
 	ctx := context.Background()
-	remoteAddress := os.Args[1]
-	fmt.Println("starting client")
+	fmt.Printf("starting client to %s\n", *remoteAddress)
 	client(ctx, remoteAddress)
 }
 
@@ -21,10 +19,10 @@ const message = "bla bla"
 const responsePrefix = "I got "
 const roundDuration = time.Second
 
-func client(ctx context.Context, address string) (err error) {
-	remoteAddr, err := net.ResolveUDPAddr("udp", address)
+func client(ctx context.Context, address *string) (err error) {
+	remoteAddr, err := net.ResolveUDPAddr("udp", *address)
 	if err != nil {
-		fmt.Printf("Couldn't resolve address %s\n", address)
+		fmt.Printf("Couldn't resolve address %s\n", *address)
 		return
 	}
 	conn, err := net.DialUDP("udp", nil, remoteAddr)

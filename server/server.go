@@ -1,17 +1,15 @@
-package main
+package server
 
 import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"time"
 )
 
-func main() {
+func Run(localAddress *string) {
 	ctx := context.Background()
-	localAddress := os.Args[1]
-	fmt.Printf("starting server on %s\n", localAddress)
+	fmt.Printf("starting server on %s\n", *localAddress)
 	server(ctx, localAddress)
 }
 
@@ -19,10 +17,10 @@ const maxBufferSize = 1024
 const timeout = time.Minute
 const responsePrefix = "I got "
 
-func server(ctx context.Context, address string) (err error) {
-	conn, err := net.ListenPacket("udp", address)
+func server(ctx context.Context, address *string) (err error) {
+	conn, err := net.ListenPacket("udp", *address)
 	if err != nil {
-		fmt.Printf("Couldn't resolve the local address %s\n", address)
+		fmt.Printf("Couldn't resolve the local address %s\n", *address)
 		return
 	}
 	defer conn.Close()
