@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 
-	"./client"
-	"./server"
+	"teleport/client"
+	"teleport/server"
 )
 
 func main() {

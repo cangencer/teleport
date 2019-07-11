@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"net"
 	"time"
+
+	"github.com/tidwall/evio"
 )
 
+// Run the server
 func Run(localAddress *string) {
 	ctx := context.Background()
 	fmt.Printf("starting server on %s\n", *localAddress)
@@ -17,40 +19,13 @@ const maxBufferSize = 1024
 const timeout = time.Minute
 const responsePrefix = "I got "
 
-func server(ctx context.Context, address *string) (err error) {
-	conn, err := net.ListenPacket("udp", *address)
-	if err != nil {
-		fmt.Printf("Couldn't resolve the local address %s\n", *address)
+func server(ctx context.Context, localAddress *string) (err error) {
+	var events evio.Events
+	events.Data = func(c evio.Conn, in []byte) (out []byte, action evio.Action) {
+		request := string(in[:])
+		response := responsePrefix + request
+		out = []byte(response)
 		return
 	}
-	defer conn.Close()
-
-	doneChan := make(chan error, 1)
-	buffer := make([]byte, maxBufferSize)
-
-	go func() {
-		for {
-			n, addr, err := conn.ReadFrom(buffer)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-			request := string(buffer[:n])
-			response := responsePrefix + request
-			n = copy(buffer, response)
-			n, err = conn.WriteTo(buffer[:n], addr)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-		}
-	}()
-	select {
-	case <-ctx.Done():
-		fmt.Println("Server cancelled")
-		err = ctx.Err()
-	case err = <-doneChan:
-		fmt.Printf("Got error: %s\n", err)
-	}
-	return
+	return evio.Serve(events, "udp://"+*localAddress)
 }
