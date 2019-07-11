@@ -7,10 +7,13 @@ import (
 	"time"
 )
 
+// Run the client
 func Run(remoteAddress *string) {
 	ctx := context.Background()
 	fmt.Printf("starting client to %s\n", *remoteAddress)
-	client(ctx, remoteAddress)
+	if err := client(ctx, remoteAddress); err != nil {
+		fmt.Println(err)
+	}
 }
 
 const maxBufferSize = 1024
