@@ -21,6 +21,7 @@ const timeout = 10 * time.Millisecond
 const message = "bla bla"
 const responsePrefix = "I got "
 const roundDuration = time.Second
+const numRounds = 10
 
 func client(ctx context.Context, address *string) (err error) {
 	remoteAddr, err := net.ResolveUDPAddr("udp", *address)
@@ -39,10 +40,11 @@ func client(ctx context.Context, address *string) (err error) {
 	go func() {
 		buffer := make([]byte, maxBufferSize)
 		expectedResponse := responsePrefix + message
-		for i := 0; i < 10; i++ {
+		for i := 0; i < numRounds; i++ {
 			endOfRound := time.Now().Add(roundDuration)
 			completedRoundtrips := 0
-			for time.Now().Before(endOfRound) {
+			minRtt, maxRtt := 999999999, 0
+			for start := time.Now(); start.Before(endOfRound); start = time.Now() {
 				_, err := fmt.Fprint(conn, message)
 				if err != nil {
 					doneChan <- err
@@ -55,6 +57,7 @@ func client(ctx context.Context, address *string) (err error) {
 					return
 				}
 				n, _, err := conn.ReadFrom(buffer)
+				end := time.Now()
 				if err != nil {
 					doneChan <- err
 					return
@@ -63,10 +66,20 @@ func client(ctx context.Context, address *string) (err error) {
 				if response != expectedResponse {
 					fmt.Printf("Wrong response, got '%s' instead of '%s'\n", response, expectedResponse)
 				}
+				took := int(end.Sub(start))
+				if took < minRtt {
+					minRtt = took
+				}
+				if took > maxRtt {
+					maxRtt = took
+				}
 				completedRoundtrips++
 			}
-			meanRtt := float64(roundDuration) / float64(completedRoundtrips) / 1000
-			fmt.Printf("Mean RTT was %f µs\n", meanRtt)
+			meanRtt := durationMicros(int(roundDuration)) / float64(completedRoundtrips)
+			fmt.Printf("min %.1f µs max %.1f µs avg %.1f µs\n",
+				durationMicros(minRtt),
+				durationMicros(maxRtt),
+				meanRtt)
 		}
 		doneChan <- nil
 	}()
@@ -79,4 +92,8 @@ func client(ctx context.Context, address *string) (err error) {
 	}
 
 	return
+}
+
+func durationMicros(duration int) float64 {
+	return float64(duration) / 1000
 }
