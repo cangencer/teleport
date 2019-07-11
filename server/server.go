@@ -40,53 +40,39 @@ func server(ctx context.Context, address *string) (err error) {
 	}
 	defer conn.Close()
 
-	doneChan := make(chan error, 1)
 	buffer := make([]byte, maxBufferSize)
-
-	go func() {
-		storage := make(map[string]string)
-		for {
-			requestLen, addr, err := conn.ReadFrom(buffer)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-			var response string
-			if requestLen < cmdLen {
-				response = ErrorStatus + "no command in request"
-			}
-			command := string(buffer[:cmdLen])
-			switch command {
-			case GetCommand:
-				keyStart := cmdLen
-				key := string(buffer[keyStart:requestLen])
-				value := storage[key]
-				response = OkStatus + string(value)
-			case SetCommand:
-				keyStart := cmdLen + sizeOfUint32
-				keyLen := binary.BigEndian.Uint32(buffer[cmdLen:keyStart])
-				valueStart := keyStart + int(keyLen)
-				key := string(buffer[keyStart:valueStart])
-				value := string(buffer[valueStart:requestLen])
-				storage[key] = value
-				response = OkStatus
-			default:
-				response = fmt.Sprintf(ErrorStatus+"invalid command '%s'", command)
-			}
-			requestLen = copy(buffer, response)
-			requestLen, err = conn.WriteTo(buffer[:requestLen], addr)
-			if err != nil {
-				doneChan <- err
-				return
-			}
+	storage := make(map[string]string)
+	for {
+		requestLen, addr, err := conn.ReadFrom(buffer)
+		if err != nil {
+			panic(err)
 		}
-	}()
-	select {
-	case <-ctx.Done():
-		fmt.Println("Server cancelled")
-		err = ctx.Err()
-	case err = <-doneChan:
-		fmt.Printf("Got error: %s\n", err)
+		var response string
+		if requestLen < cmdLen {
+			response = ErrorStatus + "no command in request"
+		}
+		command := string(buffer[:cmdLen])
+		switch command {
+		case GetCommand:
+			keyStart := cmdLen
+			key := string(buffer[keyStart:requestLen])
+			value := storage[key]
+			response = OkStatus + string(value)
+		case SetCommand:
+			keyStart := cmdLen + sizeOfUint32
+			keyLen := binary.BigEndian.Uint32(buffer[cmdLen:keyStart])
+			valueStart := keyStart + int(keyLen)
+			key := string(buffer[keyStart:valueStart])
+			value := string(buffer[valueStart:requestLen])
+			storage[key] = value
+			response = OkStatus
+		default:
+			response = fmt.Sprintf(ErrorStatus+"invalid command '%s'", command)
+		}
+		requestLen = copy(buffer, response)
+		requestLen, err = conn.WriteTo(buffer[:requestLen], addr)
+		if err != nil {
+			panic(err)
+		}
 	}
-	return
 }

@@ -8,7 +8,7 @@ import (
 
 func main() {
 	isClient := flag.Bool("c", false, "is client")
-	address := flag.String("a", "localhost:5000", "address to use")
+	address := flag.String("a", "0.0.0.0:5000", "address to use")
 
 	flag.Parse()
 

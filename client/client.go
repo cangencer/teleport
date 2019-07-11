@@ -20,9 +20,10 @@ func Run(remoteAddress *string) {
 	}
 }
 
-const maxBufferSize = 1024
+const maxBufferSize = 4096
 const timeout = 10 * time.Millisecond
-const roundDuration = time.Second
+const numRound = 10
+const roundDuration = numRound * time.Second
 
 type connState struct {
 	conn   *net.UDPConn
@@ -40,43 +41,29 @@ func client(ctx context.Context, address *string) (err error) {
 	}
 	defer conn.Close()
 
-	doneChan := make(chan error, 1)
+	connState := connState{conn, make([]byte, maxBufferSize)}
+	key := "key"
+	value := "012345678901234567890123456789012"
+	err = executeSet(connState, key, value)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	go func() {
-		connState := connState{conn, make([]byte, maxBufferSize)}
-		key := "key1"
-		value := "value1"
-		err := executeSet(connState, key, value)
-		if err != nil {
-			doneChan <- err
-			return
-		}
-		for i := 0; i < 10; i++ {
-			endOfRound := time.Now().Add(roundDuration)
-			completedRoundtrips := 0
-			for time.Now().Before(endOfRound) {
-				gotValue, err := executeGet(connState, key)
-				if err != nil {
-					doneChan <- err
-					return
-				}
-				if gotValue != value {
-					doneChan <- fmt.Errorf("got unexpected value '%s'", gotValue)
-					return
-				}
-				completedRoundtrips++
+	for i := 0; i < 2; i++ {
+		fmt.Printf("Starting round %d...\n", i)
+		endOfRound := time.Now().Add(roundDuration)
+		completedRoundtrips := 0
+		for time.Now().Before(endOfRound) {
+			_, err := executeGet(connState, key)
+			if err != nil {
+				panic(err)
 			}
-			meanRtt := float64(roundDuration) / float64(completedRoundtrips) / 1000
-			fmt.Printf("Mean RTT was %f µs\n", meanRtt)
+			completedRoundtrips++
 		}
-		doneChan <- nil
-	}()
-
-	select {
-	case <-ctx.Done():
-		fmt.Println("Client cancelled")
-		err = ctx.Err()
-	case err = <-doneChan:
+		fmt.Printf("Number of gets / s: %d\n", completedRoundtrips/numRound)
+		meanRtt := float64(roundDuration) / float64(completedRoundtrips) / 1000
+		fmt.Printf("Mean RTT was %f µs\n", meanRtt)
 	}
 	return
 }
@@ -116,8 +103,8 @@ func executeCommand(connState connState, request string) (response string, err e
 	if err != nil {
 		return
 	}
-	deadline := time.Now().Add(timeout)
-	err = conn.SetReadDeadline(deadline)
+	// deadline := time.Now().Add(timeout)
+	// err = conn.SetReadDeadline(deadline)
 	if err != nil {
 		return
 	}
