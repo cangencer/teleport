@@ -2,27 +2,36 @@ package client
 
 import (
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
+	"teleport/server"
 	"time"
 )
 
+// Run the client
 func Run(remoteAddress *string) {
 	ctx := context.Background()
 	fmt.Printf("starting client to %s\n", *remoteAddress)
-	client(ctx, remoteAddress)
+	err := client(ctx, remoteAddress)
+	if err != nil {
+		fmt.Printf("Error in client: %s\n", err)
+	}
 }
 
 const maxBufferSize = 1024
 const timeout = 10 * time.Millisecond
-const message = "bla bla"
-const responsePrefix = "I got "
 const roundDuration = time.Second
+
+type connState struct {
+	conn   *net.UDPConn
+	buffer []byte
+}
 
 func client(ctx context.Context, address *string) (err error) {
 	remoteAddr, err := net.ResolveUDPAddr("udp", *address)
 	if err != nil {
-		fmt.Printf("Couldn't resolve address %s\n", *address)
 		return
 	}
 	conn, err := net.DialUDP("udp", nil, remoteAddr)
@@ -34,31 +43,26 @@ func client(ctx context.Context, address *string) (err error) {
 	doneChan := make(chan error, 1)
 
 	go func() {
-		buffer := make([]byte, maxBufferSize)
-		expectedResponse := responsePrefix + message
+		connState := connState{conn, make([]byte, maxBufferSize)}
+		key := "key1"
+		value := "value1"
+		err := executeSet(connState, key, value)
+		if err != nil {
+			doneChan <- err
+			return
+		}
 		for i := 0; i < 10; i++ {
 			endOfRound := time.Now().Add(roundDuration)
 			completedRoundtrips := 0
 			for time.Now().Before(endOfRound) {
-				_, err := fmt.Fprint(conn, message)
+				gotValue, err := executeGet(connState, key)
 				if err != nil {
 					doneChan <- err
 					return
 				}
-				deadline := time.Now().Add(timeout)
-				err = conn.SetReadDeadline(deadline)
-				if err != nil {
-					doneChan <- err
+				if gotValue != value {
+					doneChan <- fmt.Errorf("got unexpected value '%s'", gotValue)
 					return
-				}
-				n, _, err := conn.ReadFrom(buffer)
-				if err != nil {
-					doneChan <- err
-					return
-				}
-				response := string(buffer[:n])
-				if response != expectedResponse {
-					fmt.Printf("Wrong response, got '%s' instead of '%s'\n", response, expectedResponse)
 				}
 				completedRoundtrips++
 			}
@@ -74,6 +78,53 @@ func client(ctx context.Context, address *string) (err error) {
 		err = ctx.Err()
 	case err = <-doneChan:
 	}
+	return
+}
 
+func executeGet(connState connState, key string) (value string, err error) {
+	response, err := executeCommand(connState, server.GetCommand+key)
+	if err != nil {
+		return
+	}
+	status := response[:4]
+	if status != server.OkStatus {
+		err = errors.New("error")
+		return
+	}
+	value = response[4:]
+	return
+}
+
+func executeSet(connState connState, key string, value string) error {
+	var keyLenEncoded [4]byte
+	binary.BigEndian.PutUint32(keyLenEncoded[:], uint32(len(key)))
+	response, err := executeCommand(connState, server.SetCommand+string(keyLenEncoded[:])+key+value)
+	if err != nil {
+		return err
+	}
+	status := response[:4]
+	if status != server.OkStatus {
+		return errors.New(response)
+	}
+	return nil
+}
+
+func executeCommand(connState connState, request string) (response string, err error) {
+	conn := connState.conn
+	buffer := connState.buffer
+	_, err = fmt.Fprint(connState.conn, request)
+	if err != nil {
+		return
+	}
+	deadline := time.Now().Add(timeout)
+	err = conn.SetReadDeadline(deadline)
+	if err != nil {
+		return
+	}
+	n, _, err := conn.ReadFrom(buffer)
+	if err != nil {
+		return
+	}
+	response = string(buffer[:n])
 	return
 }
