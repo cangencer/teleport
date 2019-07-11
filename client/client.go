@@ -22,8 +22,9 @@ func Run(remoteAddress *string) {
 
 const maxBufferSize = 4096
 const timeout = 10 * time.Millisecond
-const numRound = 10
-const roundDuration = numRound * time.Second
+const numRounds = 5
+const roundDurationSeconds = 10
+const roundDuration = roundDurationSeconds * time.Second
 
 type connState struct {
 	conn   *net.UDPConn
@@ -50,7 +51,7 @@ func client(ctx context.Context, address *string) (err error) {
 		return
 	}
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < numRounds; i++ {
 		fmt.Printf("Starting round %d...\n", i)
 		endOfRound := time.Now().Add(roundDuration)
 		completedRoundtrips := 0
@@ -61,7 +62,7 @@ func client(ctx context.Context, address *string) (err error) {
 			}
 			completedRoundtrips++
 		}
-		fmt.Printf("Number of gets / s: %d\n", completedRoundtrips/numRound)
+		fmt.Printf("Number of gets / s: %d\n", completedRoundtrips/roundDurationSeconds)
 		meanRtt := float64(roundDuration) / float64(completedRoundtrips) / 1000
 		fmt.Printf("Mean RTT was %f µs\n", meanRtt)
 	}
